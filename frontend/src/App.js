@@ -45,10 +45,10 @@ class App extends Component {
         //   "https://goerli.infura.io/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
         // );
         // this.setState({ provider: goerli_provider });
-        const ganache_provider = new ethers.providers.WebSocketProvider(
-          "ws://localhost:7545"
+        const goerli_provider = new ethers.providers.WebSocketProvider(
+          "wss://goerli.infura.io/ws/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
         );
-        this.setState({ provider: ganache_provider });
+        this.setState({ provider: goerli_provider });
       } catch (error) {
         console.log(error);
       }
@@ -70,10 +70,10 @@ class App extends Component {
       // const ganache_provider = new ethers.providers.JsonRpcProvider(
       //   "http://localhost:7545"
       // );
-      const ganache_provider = new ethers.providers.WebSocketProvider(
-        "ws://localhost:7545"
+      const goerli_provider = new ethers.providers.WebSocketProvider(
+        "wss://goerli.infura.io/ws/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
       );
-      this.setState({ provider: ganache_provider });
+      this.setState({ provider: goerli_provider });
     } catch (error) {
       console.log(error);
     }
@@ -89,18 +89,10 @@ class App extends Component {
   }
 
   async solve_function() {
-    console.log("solve");
-    console.log("move : ", this.state.move, "salt : ", this.state.salt);
     await this.state.instance.solve(this.state.move, this.state.salt);
   }
 
   async join_game() {
-    console.log(
-      "address : ",
-      this.state.contract_address,
-      "move : ",
-      this.state.move
-    );
     const rpsContract = new ethers.Contract(
       this.state.contract_address,
       abi,
@@ -108,8 +100,6 @@ class App extends Component {
     );
     this.setState({ instance: rpsContract });
     rpsContract.on("LogSolve", (winner, amount, move1, move2) => {
-      console.log("Winner: ", winner);
-      console.log("Amount: ", amount);
       clearTimeout(this.state.timeout);
       this.setState({ instance: null, retry: true });
       alert(`Player 1 move : ${this.state.moves[parseInt(move2)]} \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n ${winner} Won`);
@@ -137,7 +127,6 @@ class App extends Component {
 
   async j1timeout() {
     const tx = await this.state.instance.connect(this.state.signer).j1Timeout();
-    console.log("J1Timeout transaction hash:", tx.hash);
     await tx.wait(); // wait for transaction to be mined
     console.log("J1Timeout transaction confirmed!");
   }
@@ -151,12 +140,6 @@ class App extends Component {
     const salt = ethers.utils.formatBytes32String("secret");
     this.setState({ salt: salt });
     const stake = ethers.utils.parseEther(this.state.stake);
-    console.log(
-      this.state.player_2_address,
-      this.state.salt,
-      this.state.move,
-      this.state.stake
-    );
     const newContractInstance = await contractFactory.deploy(
       Number(this.state.move),
       salt,
@@ -167,22 +150,17 @@ class App extends Component {
     );
     await newContractInstance.deployed();
     newContractInstance.on("LogPlay", (address, move) => {
-      console.log("Player: ", address);
-      console.log("Move: ", move);
       if (this.state.room_type === "start") {
         this.setState({ solve: true });
         clearTimeout(this.state.timeout);
       }
     });
     newContractInstance.on("LogSolve", (winner, amount, move1, move2) => {
-      console.log("Winner: ", winner);
-      console.log("Amount: ", amount);
       this.setState({ instance: null, retry: true });
       alert(`Player 1 move : ${this.state.moves[parseInt(move2)]} \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n ${winner} Won`);
     });
 
     const t = await newContractInstance.TIMEOUT();
-    console.log("time out : ", t);
     const j2_timeout = setTimeout(async () => {
       try {
         await newContractInstance.j2Timeout();
@@ -194,7 +172,6 @@ class App extends Component {
     this.setState({ timeout: j2_timeout });
     this.setState({ instance: newContractInstance });
     const contractAddress = newContractInstance.address;
-    console.log(contractAddress);
     this.setState({ contract_address: contractAddress });
   }
 
