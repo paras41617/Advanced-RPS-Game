@@ -9,8 +9,8 @@ class App extends Component {
     this.state = {
       provider: null,
       accounts: [],
-      stake: 0,
-      player_2_address: "",
+      stake: null,
+      player_2_address: null,
       room_type: null,
       contract_address: "",
       salt: "",
@@ -21,7 +21,7 @@ class App extends Component {
       timeout: null,
       timeout_period: null,
       retry: false,
-      moves:[null , "Rock" , "Paper" , "Scissors" , "Spock" , "Lizard"]
+      moves: [null, "Rock", "Paper", "Scissors", "Spock", "Lizard"],
     };
     this.on_text_change = this.on_text_change.bind(this);
     this.join_game = this.join_game.bind(this);
@@ -41,10 +41,9 @@ class App extends Component {
       try {
         const accounts = await provider.listAccounts();
         this.setState({ accounts });
-        // const goerli_provider = new ethers.providers.JsonRpcProvider(
-        //   "https://goerli.infura.io/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
+        // const ganache_provider = new ethers.providers.WebSocketProvider(
+        //   "ws://localhost:7545"
         // );
-        // this.setState({ provider: goerli_provider });
         const goerli_provider = new ethers.providers.WebSocketProvider(
           "wss://goerli.infura.io/ws/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
         );
@@ -63,12 +62,8 @@ class App extends Component {
       this.setState({ signer: provider.getSigner() });
       const accounts = await provider.listAccounts();
       this.setState({ accounts });
-      // const goerli_provider = new ethers.providers.JsonRpcProvider(
-      //   "https://goerli.infura.io/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
-      // );
-      // this.setState({ provider: goerli_provider });
-      // const ganache_provider = new ethers.providers.JsonRpcProvider(
-      //   "http://localhost:7545"
+      // const ganache_provider = new ethers.providers.WebSocketProvider(
+      //   "ws://localhost:7545"
       // );
       const goerli_provider = new ethers.providers.WebSocketProvider(
         "wss://goerli.infura.io/ws/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
@@ -89,7 +84,15 @@ class App extends Component {
   }
 
   async solve_function() {
-    await this.state.instance.solve(this.state.move, this.state.salt);
+    if (this.state.instance === null) {
+      alert("Game has been completed");
+    } else {
+      try {
+        await this.state.instance.solve(this.state.move, this.state.salt);
+      } catch {
+        alert("Some Error Occured Retry");
+      }
+    }
   }
 
   async join_game() {
@@ -102,27 +105,50 @@ class App extends Component {
     rpsContract.on("LogSolve", (winner, amount, move1, move2) => {
       clearTimeout(this.state.timeout);
       this.setState({ instance: null, retry: true });
-      alert(`Player 1 move : ${this.state.moves[parseInt(move2)]} \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n ${winner} Won`);
+      const returnedAddress = ethers.utils.getAddress(winner);
+      if (returnedAddress === ethers.constants.AddressZero) {
+        alert(
+          `Player 1 move : ${
+            this.state.moves[parseInt(move2)]
+          } \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n Tie`
+        );
+      } else {
+        alert(
+          `Player 1 move : ${
+            this.state.moves[parseInt(move2)]
+          } \n Player 2 move : ${
+            this.state.moves[parseInt(move1)]
+          } \n ${winner} Won`
+        );
+      }
     });
     const t = await rpsContract.TIMEOUT();
     this.setState({ timeout_period: t });
 
     const stake = await rpsContract.stake();
 
-    const playTx = await rpsContract
-      .connect(this.state.signer)
-      .play(this.state.move, { value: stake });
+    try {
+      const playTx = await rpsContract
+        .connect(this.state.signer)
+        .play(this.state.move, { value: stake });
+      await playTx.wait();
+    } catch {
+      alert("Some Error Occured, Retry");
+      this.setState({ instance: null });
+    }
 
-    await playTx.wait();
     const j1_timeout = setTimeout(async () => {
+      alert(
+        "Stake getting back to your account with reward to double \n Player 1 did not Solved"
+      );
       await this.j1timeout();
       console.log("Done!");
     }, this.state.timeout_period * 1000);
     this.setState({ timeout: j1_timeout });
   }
 
-  reload_function(){
-    window.location.reload()
+  reload_function() {
+    window.location.reload();
   }
 
   async j1timeout() {
@@ -132,47 +158,72 @@ class App extends Component {
   }
 
   async start_game() {
-    const contractFactory = new ethers.ContractFactory(
-      abi,
-      bytecode,
-      this.state.signer
-    );
-    const salt = ethers.utils.formatBytes32String("secret");
-    this.setState({ salt: salt });
-    const stake = ethers.utils.parseEther(this.state.stake);
-    const newContractInstance = await contractFactory.deploy(
-      Number(this.state.move),
-      salt,
-      this.state.player_2_address,
-      {
-        value: stake,
-      }
-    );
-    await newContractInstance.deployed();
-    newContractInstance.on("LogPlay", (address, move) => {
-      if (this.state.room_type === "start") {
-        this.setState({ solve: true });
-        clearTimeout(this.state.timeout);
-      }
-    });
-    newContractInstance.on("LogSolve", (winner, amount, move1, move2) => {
-      this.setState({ instance: null, retry: true });
-      alert(`Player 1 move : ${this.state.moves[parseInt(move2)]} \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n ${winner} Won`);
-    });
+    if (this.state.stake !== null && this.state.player_2_address !== null) {
+      const contractFactory = new ethers.ContractFactory(
+        abi,
+        bytecode,
+        this.state.signer
+      );
+      const salt = ethers.utils.formatBytes32String("secret");
+      this.setState({ salt: salt });
+      const stake = ethers.utils.parseEther(this.state.stake);
+      const newContractInstance = await contractFactory
+        .deploy(Number(this.state.move), salt, this.state.player_2_address, {
+          value: stake,
+        })
+        .catch((error) => {
+          alert("Some Error Occured, Retry");
+        });
+      await newContractInstance.deployed();
+      this.setState({ instance: newContractInstance });
+      // try {
+      //   await newContractInstance.deployed();
+      // } catch {
+      //   alert("Some error Occured, Retry");
+      // }
+      newContractInstance.on("LogPlay", (address, move) => {
+        if (this.state.room_type === "start") {
+          this.setState({ solve: true });
+          clearTimeout(this.state.timeout);
+        }
+      });
+      newContractInstance.on("LogSolve", (winner, amount, move1, move2) => {
+        this.setState({ instance: null, retry: true });
+        const returnedAddress = ethers.utils.getAddress(winner);
+        if (returnedAddress === ethers.constants.AddressZero) {
+          alert(
+            `Player 1 move : ${
+              this.state.moves[parseInt(move2)]
+            } \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n Tie`
+          );
+        } else {
+          alert(
+            `Player 1 move : ${
+              this.state.moves[parseInt(move2)]
+            } \n Player 2 move : ${
+              this.state.moves[parseInt(move1)]
+            } \n ${winner} Won`
+          );
+        }
+      });
 
-    const t = await newContractInstance.TIMEOUT();
-    const j2_timeout = setTimeout(async () => {
-      try {
-        await newContractInstance.j2Timeout();
-        alert("Stake getting back to your account");
-      } catch {
-        alert("something went wrong");
-      }
-    }, t * 1000); // The timeout is in seconds, so we multiply by 1000 to get milliseconds
-    this.setState({ timeout: j2_timeout });
-    this.setState({ instance: newContractInstance });
-    const contractAddress = newContractInstance.address;
-    this.setState({ contract_address: contractAddress });
+      const t = await newContractInstance.TIMEOUT();
+      const j2_timeout = setTimeout(async () => {
+        try {
+          alert(
+            "Stake getting back to your account \n Player 2 did not Played"
+          );
+          await newContractInstance.j2Timeout();
+        } catch {
+          alert("something went wrong");
+        }
+      }, t * 1000); // The timeout is in seconds, so we multiply by 1000 to get milliseconds
+      this.setState({ timeout: j2_timeout });
+      const contractAddress = newContractInstance.address;
+      this.setState({ contract_address: contractAddress });
+    } else {
+      alert("Some Input Value is missing");
+    }
   }
 
   render() {
