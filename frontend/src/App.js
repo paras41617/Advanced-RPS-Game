@@ -12,7 +12,7 @@ class App extends Component {
       stake: null,
       player_2_address: null,
       room_type: null,
-      contract_address: "",
+      contract_address: null,
       salt: "",
       move: 1,
       signer: "",
@@ -44,6 +44,7 @@ class App extends Component {
         // const ganache_provider = new ethers.providers.WebSocketProvider(
         //   "ws://localhost:7545"
         // );
+        // this.setState({ provider: ganache_provider });
         const goerli_provider = new ethers.providers.WebSocketProvider(
           "wss://goerli.infura.io/ws/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
         );
@@ -65,6 +66,7 @@ class App extends Component {
       // const ganache_provider = new ethers.providers.WebSocketProvider(
       //   "ws://localhost:7545"
       // );
+      // this.setState({ provider: ganache_provider });
       const goerli_provider = new ethers.providers.WebSocketProvider(
         "wss://goerli.infura.io/ws/v3/0e8423b2ced34e7fbb0fe8c4da56e63a"
       );
@@ -96,55 +98,59 @@ class App extends Component {
   }
 
   async join_game() {
-    const rpsContract = new ethers.Contract(
-      this.state.contract_address,
-      abi,
-      this.state.provider
-    );
-    this.setState({ instance: rpsContract });
-    rpsContract.on("LogSolve", (winner, amount, move1, move2) => {
-      clearTimeout(this.state.timeout);
-      this.setState({ instance: null, retry: true });
-      const returnedAddress = ethers.utils.getAddress(winner);
-      if (returnedAddress === ethers.constants.AddressZero) {
-        alert(
-          `Player 1 move : ${
-            this.state.moves[parseInt(move2)]
-          } \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n Tie`
-        );
-      } else {
-        alert(
-          `Player 1 move : ${
-            this.state.moves[parseInt(move2)]
-          } \n Player 2 move : ${
-            this.state.moves[parseInt(move1)]
-          } \n ${winner} Won`
-        );
-      }
-    });
-    const t = await rpsContract.TIMEOUT();
-    this.setState({ timeout_period: t });
-
-    const stake = await rpsContract.stake();
-
-    try {
-      const playTx = await rpsContract
-        .connect(this.state.signer)
-        .play(this.state.move, { value: stake });
-      await playTx.wait();
-    } catch {
-      alert("Some Error Occured, Retry");
-      this.setState({ instance: null });
-    }
-
-    const j1_timeout = setTimeout(async () => {
-      alert(
-        "Stake getting back to your account with reward to double \n Player 1 did not Solved"
+    if (this.state.contract_address !== null) {
+      const rpsContract = new ethers.Contract(
+        this.state.contract_address,
+        abi,
+        this.state.provider
       );
-      await this.j1timeout();
-      console.log("Done!");
-    }, this.state.timeout_period * 1000);
-    this.setState({ timeout: j1_timeout });
+      this.setState({ instance: rpsContract });
+      rpsContract.on("LogSolve", (winner, amount, move1, move2) => {
+        clearTimeout(this.state.timeout);
+        this.setState({ instance: null, retry: true });
+        const returnedAddress = ethers.utils.getAddress(winner);
+        if (returnedAddress === ethers.constants.AddressZero) {
+          alert(
+            `Player 1 move : ${
+              this.state.moves[parseInt(move2)]
+            } \n Player 2 move : ${this.state.moves[parseInt(move1)]} \n Tie`
+          );
+        } else {
+          alert(
+            `Player 1 move : ${
+              this.state.moves[parseInt(move2)]
+            } \n Player 2 move : ${
+              this.state.moves[parseInt(move1)]
+            } \n ${winner} Won`
+          );
+        }
+      });
+      const t = await rpsContract.TIMEOUT();
+      this.setState({ timeout_period: t });
+
+      const stake = await rpsContract.stake();
+
+      try {
+        const playTx = await rpsContract
+          .connect(this.state.signer)
+          .play(this.state.move, { value: stake });
+        await playTx.wait();
+      } catch {
+        alert("Some Error Occured, Retry");
+        this.setState({ instance: null , contract_address:null});
+      }
+
+      const j1_timeout = setTimeout(async () => {
+        alert(
+          "Stake getting back to your account with reward to double \n Player 1 did not Solved"
+        );
+        await this.j1timeout();
+        console.log("Done!");
+      }, this.state.timeout_period * 1000);
+      this.setState({ timeout: j1_timeout });
+    } else {
+      alert("Some Input Values are missing");
+    }
   }
 
   reload_function() {
